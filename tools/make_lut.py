@@ -65,12 +65,11 @@ def grade(rgb):
 
     # 1. Filmic S-curve on luminance (deep blacks, punchy mids, soft roll-off)
     y = luma(x)
-    y_c = np.clip(y, 0, 1)
-    s_curve = y_c + 0.22 * (smoothstep(0, 1, y_c) - y_c)        # contrast
-    s_curve = s_curve - 0.035 * (1 - smoothstep(0.0, 0.25, y_c)) * (1 - y_c)  # crush shadows a touch
-    s_curve = np.where(y_c > 0.82, 0.82 + (s_curve - 0.82) * 0.85, s_curve)    # highlight roll-off
-    ratio = np.where(y > 1e-4, s_curve / np.maximum(y, 1e-4), 1.0)
-    x = x * ratio[..., None]
+    # Per-channel curve (a luma-ratio curve crushes saturated blues/reds, whose
+    # luma is low). Slight mid lift keeps the sunny, bright feel.
+    x = np.clip(x, 0, 1) ** 0.95                                  # lift mids
+    x = x + 0.16 * (smoothstep(0, 1, x) - x)                      # contrast
+    x = np.where(x > 0.85, 0.85 + (x - 0.85) * 0.9, x)            # highlight roll-off
 
     # 2. Split toning: teal shadows, warm orange/pink highlights
     y = np.clip(luma(x), 0, 1)

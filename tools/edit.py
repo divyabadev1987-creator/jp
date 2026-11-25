@@ -124,11 +124,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 # ---------------------------------------------------------------- video
 def probe(video):
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                        "stream=width,height,r_frame_rate", "-of", "json", str(video)],
+                        "stream=width,height,avg_frame_rate", "-of", "json", str(video)],
                        capture_output=True, text=True, check=True)
     s = json.loads(r.stdout)["streams"][0]
-    num, den = s["r_frame_rate"].split("/")
-    return s["width"], s["height"], float(num) / float(den)
+    num, den = s["avg_frame_rate"].split("/")
+    fps = float(num) / float(den)
+    # snap variable-frame-rate captures (Game Bar, phones) to the nearest standard rate
+    std = min([24, 25, 30, 48, 50, 60, 120, 144], key=lambda r: abs(r - fps))
+    return s["width"], s["height"], std
 
 
 def esc(p):
@@ -136,7 +139,7 @@ def esc(p):
     return str(p).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
 
 
-def build_filter(lut, res, bloom, sharpen, vignette, ass):
+def build_filter(lut, res, bloom, sharpen, vignette, ass, fps):
     f = [f"[0:v]format=gbrp,lut3d=file='{esc(lut)}':interp=tetrahedral[g]"]
     if bloom > 0:
         f.append("[g]split[base][hl]")
@@ -144,11 +147,11 @@ def build_filter(lut, res, bloom, sharpen, vignette, ass):
                  "scale=iw*4:ih*4:flags=bilinear[glow]")
         f.append(f"[base][glow]blend=all_mode=screen:all_opacity={bloom}[g]")
     chain = "[g]"
-    steps = [f"scale=-2:{res}:flags=lanczos"]
+    steps = [f"fps={fps}", f"scale=-2:{res}:flags=lanczos"]
     if sharpen > 0:
         steps.append(f"cas=strength={sharpen}")
     if vignette:
-        steps.append("vignette=angle=PI/5:mode=forward")
+        steps.append("vignette=angle=PI/10:mode=forward")
     if ass:
         steps.append(f"ass='{esc(ass)}':fontsdir='{esc(FONTS)}'")
     steps.append("format=yuv420p")
@@ -165,7 +168,7 @@ def encode(src, dst, fgraph, fps, extra_in=(), extra_out=()):
            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
            "-color_range", "tv",
            "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
-           "-movflags", "+faststart", *extra_out, str(dst)]
+           "-fps_mode", "cfr", "-movflags", "+faststart", *extra_out, str(dst)]
     print(" ".join(cmd)); subprocess.run(cmd, check=True)
 
 
@@ -217,7 +220,7 @@ def main():
         write_ass(segs, ass, a.font, a.font_size, not a.no_caps, not a.no_pop)
         print(f"captions: {len(segs)} -> {ass}")
 
-    fg = build_filter(lut, a.res, a.bloom, a.sharpen, not a.no_vignette, ass)
+    fg = build_filter(lut, a.res, a.bloom, a.sharpen, not a.no_vignette, ass, fps)
     if a.preview:
         encode(src, out, fg, fps, extra_in=["-ss", a.start, "-t", "10"])
         # side-by-side still at the middle of the preview
