@@ -27,6 +27,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# 1440p60 YouTube target ~24-32 Mbps; override with env X264_PRESET / X264_CRF
+PRESET = os.environ.get("X264_PRESET", "medium")
+CRF = os.environ.get("X264_CRF", "18")
 FONTS = ROOT / "fonts"
 GRADE_DIR = ROOT / "grade"
 
@@ -217,7 +220,7 @@ def encode(src, dst, fgraph, fps, extra_in=(), extra_out=()):
     gop = max(1, round(fps / 2))  # YouTube recommends keyframe every half-second-ish / closed GOP
     cmd = ["ffmpeg", "-hide_banner", "-y", *extra_in, "-i", str(src),
            "-filter_complex", fgraph, "-map", "[v]", "-map", "0:a?",
-           "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-profile:v", "high",
+           "-c:v", "libx264", "-preset", PRESET, "-crf", CRF, "-maxrate", "32M", "-bufsize", "64M", "-profile:v", "high",
            "-pix_fmt", "yuv420p", "-g", str(gop), "-bf", "2", "-flags", "+cgop",
            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
            "-color_range", "tv",
