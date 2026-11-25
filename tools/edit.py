@@ -33,8 +33,11 @@ GRADE_DIR = ROOT / "grade"
 
 # ---------------------------------------------------------------- subtitles
 def ts_to_s(t):
-    h, m, s = t.replace(",", ".").split(":")
-    return int(h) * 3600 + int(m) * 60 + float(s)
+    parts = [float(x) for x in t.replace(",", ".").split(":")]
+    total = 0.0
+    for x in parts:
+        total = total * 60 + x
+    return total
 
 
 def s_to_ass(t):
@@ -94,6 +97,57 @@ def auto_transcribe(video, max_words):
             out.append((cur[0].start, cur[-1].end, "".join(x.word for x in cur).strip()))
             cur = []
     return out
+
+
+def parse_captions(path):
+    """Lines like:
+         1:08-1:12 | TITLE | FINAL E-VENT | ELECTRIC ODYSSEY
+         5:34-5:38 | 387 KM/H!!!
+       Blank lines and lines starting with # are ignored."""
+    out = []
+    for raw in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        a, b = [ts_to_s(t if t.count(":") == 2 else "0:" + t) for t in parts[0].split("-")]
+        if parts[1].upper() == "TITLE":
+            out.append(("title", a, b, parts[2], parts[3] if len(parts) > 3 else ""))
+        else:
+            out.append(("hype", a, b, parts[1], ""))
+    return out
+
+
+def write_hype_ass(items, path, font, offset=0.0):
+    """Jp_gamerZ narration style: white Impact, sentence case, top-centre,
+    thin black outline + soft shadow, wraps to two lines. Race titles use the
+    same look with a "Race:" prefix, like the "Mission:" captions."""
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Hype,{font},74,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,8,140,140,28,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    fade = r"{\fad(120,120)}"
+    lines = []
+    for kind, a, b, text, extra in items:
+        a, b = a - offset, b - offset
+        if b <= 0:
+            continue
+        if kind == "title":
+            text = f"Race: {text}" + (f" ({extra})" if extra else "")
+        text = text.replace("{", "(").replace("}", ")")
+        lines.append(f"Dialogue: 0,{s_to_ass(a)},{s_to_ass(b)},Hype,,0,0,0,,{fade}{text}")
+    Path(path).write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+    return len(lines)
 
 
 def write_ass(segs, path, font, size, upper, pop):
@@ -177,6 +231,7 @@ def main():
     ap.add_argument("input")
     ap.add_argument("-o", "--output")
     ap.add_argument("--subs", help=".srt or .ass subtitle file")
+    ap.add_argument("--captions", help="hype captions / race titles text file (see captions/README)")
     ap.add_argument("--auto-subs", action="store_true", help="transcribe with faster-whisper")
     ap.add_argument("--strength", type=float, default=1.0, help="grade strength 0..1")
     ap.add_argument("--res", type=int, default=1440,
@@ -200,7 +255,11 @@ def main():
     print(f"input {w}x{h} @ {fps:.2f}fps -> {a.res}p")
 
     if not (FONTS / "impact.ttf").exists() and not (FONTS / "Impact.ttf").exists() and a.font == "Impact":
-        print("WARNING: fonts/impact.ttf not found; libass will substitute another font.")
+        if (FONTS / "Anton-Regular.ttf").exists():
+            print("fonts/impact.ttf not found -> using Anton (Impact look-alike). Drop impact.ttf in fonts/ for real Impact.")
+            a.font = "Anton"
+        else:
+            print("WARNING: fonts/impact.ttf not found; libass will substitute another font.")
 
     GRADE_DIR.mkdir(exist_ok=True)
     lut = GRADE_DIR / f"vicecity_{a.strength:.2f}.cube"
@@ -209,7 +268,12 @@ def main():
                         "--strength", str(a.strength), "-o", str(lut)], check=True)
 
     ass = None
-    if a.subs and a.subs.lower().endswith(".ass"):
+    if a.captions:
+        st = (ts_to_s(a.start) if ":" in a.start else float(a.start)) if a.preview else 0.0
+        ass = work.with_suffix(".ass")
+        n = write_hype_ass(parse_captions(a.captions), ass, a.font, st)
+        print(f"captions: {n} -> {ass}")
+    elif a.subs and a.subs.lower().endswith(".ass"):
         ass = Path(a.subs).resolve()
     elif a.subs or a.auto_subs:
         segs = chunk_segments(parse_srt(a.subs), a.words) if a.subs else auto_transcribe(src, a.words)
