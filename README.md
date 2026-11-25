@@ -13,7 +13,16 @@ python3 tools/edit.py gameplay.mp4 --preview --start 60          # 10s test + be
 python3 tools/edit.py gameplay.mp4 --subs gameplay.srt           # full edit, captions from .srt
 python3 tools/edit.py gameplay.mp4 --auto-subs                   # full edit, auto captions
 python3 tools/edit.py gameplay.mp4 --strength 0.7 --res 2160     # lighter grade, 4K export
+python3 tools/edit.py gameplay.mp4 --captions projects/<name>/captions.txt   # narration captions + race titles
 ```
+
+### Caption file (Jp_gamerZ narration style)
+```
+0:40-0:45 | 283 km/h on a bike at night. Don't try this at home.
+1:04-1:08 | TITLE | Final E-Vent | Electric Odyssey      -> "Race: Final E-Vent (Electric Odyssey)"
+```
+White Impact, sentence case, top-centre, thin black outline. If `fonts/impact.ttf` is missing,
+the free look-alike **Anton** (`fonts/Anton-Regular.ttf`) is used.
 
 ## What it does
 | Step | Detail |
