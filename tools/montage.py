@@ -128,7 +128,7 @@ def cut_pass(src, plan, work):
     return joined
 
 
-def finish_pass(cut, plan, captions, out, res=1440, strength=1.0, window=None):
+def finish_pass(cut, plan, captions, out, res=1440, strength=1.0, window=None, audio=True):
     """Pass 2: grade + glow + sharpen + 1440p + vignette + flash transitions + captions."""
     hook, keeps, _ = parse_plan(plan)
     tl = Timeline(hook, keeps)
@@ -166,11 +166,12 @@ def finish_pass(cut, plan, captions, out, res=1440, strength=1.0, window=None):
     gfile.write_text(graph)
     win = ["-ss", f"{window[0]:.3f}", "-t", f"{window[1] - window[0]:.3f}"] if window else []
     cmd = ["ffmpeg", "-hide_banner", "-y", *win, "-i", str(cut), "-filter_complex_script", str(gfile),
-           "-map", "[v]", "-map", "0:a",
+           "-map", "[v]", *(["-map", "0:a"] if audio else ["-an"]),
            "-c:v", "libx264", "-preset", E.PRESET, "-crf", E.CRF, "-maxrate", "32M", "-bufsize", "64M",
            "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "30", "-bf", "2", "-flags", "+cgop",
            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
-           "-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-fps_mode", "cfr", "-movflags", "+faststart", str(out)]
+           *(["-c:a", "aac", "-b:a", "320k", "-ar", "48000"] if audio else []), "-fps_mode", "cfr",
+           *(["-movflags", "+faststart"] if str(out).endswith(".mp4") else []), str(out)]
     print(f"edited length {int(tl.length // 60)}:{tl.length % 60:04.1f}  captions {len(items)}  cuts {len(cuts)}", flush=True)
     subprocess.run(cmd, check=True)
 
