@@ -1,0 +1,7 @@
+*.mp4
+*.mov
+*.mkv
+*.ass
+*.png
+fonts/*.ttf
+__pycache__/
